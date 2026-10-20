@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Auth Admin</title>
+<style>
+body{background:#0f0f0f;color:#fff;font-family:sans-serif;padding:20px}
+input,button{padding:12px;border-radius:8px;border:none;margin:5px}
+button{background:#00ff88;color:#000;font-weight:bold;cursor:pointer}
+.card{background:#1e1e1e;padding:12px;border-radius:10px;margin:10px 0;word-break:break-all}
+.banned{border-left:4px solid red}
+.valid{border-left:4px solid #00ff88}
+</style>
+</head>
+<body>
+<h2>🔑 My Auth - Admin Panel</h2>
+<div>
+<input id="days" type="number" value="30" style="width:80px">
+<button onclick="createKey()">Generate Key</button>
+<button onclick="loadKeys()" style="background:#555;color:#fff">Refresh</button>
+</div>
+<div id="result" style="margin:15px 0;color:#00ff88;font-weight:bold"></div>
+<div id="list"></div>
+
+<script>
+async function createKey(){
+  let days = document.getElementById('days').value || 30;
+  let res = await fetch('/api/generate',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({days: parseInt(days)})
+  });
+  let data = await res.json();
+  if(data.success){
+    document.getElementById('result').innerHTML = `✅ Created: ${data.key} (${data.days} days) <button onclick="copy('${data.key}')">Copy</button>`;
+    loadKeys();
+  }
+}
+
+async function loadKeys(){
+  let res = await fetch('/api/keys');
+  let keys = await res.json();
+  let html = `<h3>Total Keys: ${Object.keys(keys).length}</h3>`;
+  
+  // sort by newest
+  let sorted = Object.entries(keys).sort((a,b)=> b[1].expiry - a[1].expiry);
+  
+  for(let [k, v] of sorted){
+    let left = Math.ceil((v.expiry - Date.now())/86400000);
+    if(left < 0) left = 0;
+    let status = v.banned ? "BANNED" : left <=0 ? "EXPIRED" : left+" days left";
+    html += `
+      <div class="card ${v.banned ? 'banned' : 'valid'}">
+        <b>${k}</b><br>
+        Status: ${status} | Created: ${new Date(v.createdAt).toLocaleDateString()}<br>
+        HWID: ${v.hwid || 'Not locked yet'}<br><br>
+        <button onclick="copy('${k}')">Copy</button>
+        <button onclick="banKey('${k}')" style="background:${v.banned?'#00ff88':'orange'}">${v.banned?'Unban':'Ban'}</button>
+        <button onclick="deleteKey('${k}')" style="background:red;color:#fff">Delete</button>
+      </div>
+    `;
+  }
+  document.getElementById('list').innerHTML = html;
+}
+
+async function banKey(k){
+  await fetch('/api/ban',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
+  loadKeys();
+}
+async function deleteKey(k){
+  if(!confirm("Delete "+k+" ?")) return;
+  await fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
+  loadKeys();
+}
+function copy(text){ navigator.clipboard.writeText(text); alert("Copied: "+text); }
+
+loadKeys();
+</script>
+</body>
+</html>
